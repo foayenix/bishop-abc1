@@ -1,0 +1,158 @@
+// Bishop - AI Inbox Manager
+// Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  password      String?   // Hashed password for credentials auth
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  emailAccounts EmailAccount[]
+}
+
+// NextAuth Account model for OAuth providers
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// NextAuth Session model
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// NextAuth Verification Token
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Email Account (Gmail connection)
+model EmailAccount {
+  id           String   @id @default(cuid())
+  userId       String
+  provider     String   @default("gmail") // gmail, outlook, etc.
+  email        String   // The email address of this account
+  accessToken  String   @db.Text
+  refreshToken String   @db.Text
+  expiresAt    DateTime
+
+  // Sync tracking
+  lastSyncAt   DateTime?
+  historyId    String?   // Gmail history ID for incremental sync
+  syncStatus   String    @default("pending") // pending, syncing, synced, error
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emails Email[]
+
+  @@unique([userId, email])
+  @@index([userId])
+}
+
+// Email message
+model Email {
+  id              String   @id @default(cuid())
+  emailAccountId  String
+
+  // Provider identifiers
+  providerId      String   // Gmail message ID
+  threadId        String?  // Gmail thread ID
+
+  // Email metadata
+  from            String
+  fromName        String?
+  to              String[]
+  cc              String[]
+  bcc             String[]
+  subject         String
+  snippet         String   @db.Text // Short preview
+  body            String   @db.Text // Full text body (HTML stripped)
+
+  // Status
+  isRead          Boolean  @default(false)
+  isStarred       Boolean  @default(false)
+  isArchived      Boolean  @default(false)
+  isTrashed       Boolean  @default(false)
+
+  // Gmail labels
+  labels          String[]
+
+  // Timestamps
+  receivedAt      DateTime
+  internalDate    DateTime // Gmail internal date
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // AI Classification
+  category        String?  // important, finance, promo, social, personal, other
+  priorityScore   Float?   // 0-1
+  needsReply      Boolean  @default(false)
+  classifiedAt    DateTime?
+
+  // Relations
+  emailAccount EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([emailAccountId, providerId])
+  @@index([emailAccountId])
+  @@index([emailAccountId, receivedAt])
+  @@index([emailAccountId, category])
+  @@index([emailAccountId, isRead])
+  @@index([emailAccountId, needsReply])
+}
+
+// Sync Job tracking for background processing
+model SyncJob {
+  id             String   @id @default(cuid())
+  emailAccountId String
+  status         String   @default("pending") // pending, running, completed, failed
+  startedAt      DateTime?
+  completedAt    DateTime?
+  errorMessage   String?  @db.Text
+  emailsSynced   Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  @@index([emailAccountId])
+  @@index([status])
+}
