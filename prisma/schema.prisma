@@ -131,6 +131,11 @@ model Email {
   needsReply      Boolean  @default(false)
   classifiedAt    DateTime?
 
+  // Unsubscribe tracking
+  unsubscribeLink String?  @db.Text // URL or mailto link
+  unsubscribeType String?  // 'link', 'mailto', 'one-click'
+  isUnsubscribed  Boolean  @default(false)
+
   // Relations
   emailAccount EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
 
@@ -140,6 +145,34 @@ model Email {
   @@index([emailAccountId, category])
   @@index([emailAccountId, isRead])
   @@index([emailAccountId, needsReply])
+  @@index([emailAccountId, from])
+}
+
+// Sender engagement statistics
+model SenderStats {
+  id              String   @id @default(cuid())
+  emailAccountId  String
+  senderEmail     String
+  senderName      String?
+
+  // Engagement metrics
+  totalEmails     Int      @default(0)
+  readEmails      Int      @default(0)
+  lastEmailAt     DateTime?
+  lastReadAt      DateTime?
+
+  // Unsubscribe info
+  unsubscribeLink String?  @db.Text
+  unsubscribeType String?
+  isUnsubscribed  Boolean  @default(false)
+  unsubscribedAt  DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([emailAccountId, senderEmail])
+  @@index([emailAccountId])
+  @@index([emailAccountId, totalEmails])
 }
 
 // Sync Job tracking for background processing

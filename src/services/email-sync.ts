@@ -7,6 +7,7 @@ import {
   extractTextBody,
 } from './gmail'
 import { classifyEmail } from './ai-classifier'
+import { parseUnsubscribeFromMessage, updateSenderStats } from './unsubscribe'
 
 const SYNC_DAYS = 90
 const BATCH_SIZE = 50
@@ -67,6 +68,9 @@ export async function syncEmailAccount(emailAccountId: string): Promise<{
         emailsSynced,
       },
     })
+
+    // Update sender statistics for unsubscribe recommendations
+    await updateSenderStats(emailAccountId).catch(console.error)
 
     return { success: true, emailsSynced }
   } catch (error) {
@@ -220,6 +224,9 @@ async function fetchAndStoreMessage(
     const headers = parseEmailHeaders(message.payload.headers)
     const body = extractTextBody(message.payload)
 
+    // Extract unsubscribe link
+    const unsubscribeInfo = parseUnsubscribeFromMessage(message)
+
     // Store the email
     const email = await prisma.email.create({
       data: {
@@ -241,6 +248,8 @@ async function fetchAndStoreMessage(
         labels: message.labelIds,
         receivedAt: headers.date,
         internalDate: new Date(parseInt(message.internalDate)),
+        unsubscribeLink: unsubscribeInfo.link,
+        unsubscribeType: unsubscribeInfo.type,
       },
     })
 
